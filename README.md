@@ -121,6 +121,70 @@ Multiple filters are combined with AND:
 GET /users?age__gte=25&age__lte=35&name__ilike=a
 ```
 
+### Filtering and Ordering on Joined Tables
+
+You can filter and order by columns from related tables. Just add the join in your query and reference the related model's columns:
+
+```python
+class Post(Base):
+    __tablename__ = "posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    views: Mapped[int] = mapped_column(Integer)
+
+    author: Mapped["User"] = relationship("User")
+
+
+@app.get("/posts")
+def get_posts(
+    db: Session = Depends(get_db),
+    filters=Depends(filter_by_fields({
+        # Post filters
+        "title": filter_(Post.title, (eq, like, ilike)),
+        "views": filter_(Post.views, (eq, gte, lte)),
+        # Joined User filters
+        "author_name": filter_(User.name, (eq, like, ilike)),
+        "author_age": filter_(User.age, (eq, gte, lte)),
+        "author_email": filter_(User.email, (like, ilike)),
+    })),
+    order_by=Depends(order_by_fields({
+        "id": Post.id,
+        "title": Post.title,
+        "views": Post.views,
+        # Joined User ordering
+        "author_name": User.name,
+        "author_age": User.age,
+    })),
+):
+    # Add .join(User) for joined filters/ordering
+    query = db.query(Post).join(User).filter(*filters).order_by(*order_by)
+    return query.all()
+```
+
+API usage:
+
+```
+# Filter posts by author's name
+GET /posts?author_name__eq=Alice
+
+# Filter by author age range
+GET /posts?author_age__gte=25&author_age__lte=35
+
+# Combine post and author filters
+GET /posts?views__gte=100&author_name__like=ali
+
+# Order by author's name
+GET /posts?order_by[]=author_name
+
+# Order by author age descending
+GET /posts?order_by[]=-author_age
+
+# Filter and order together
+GET /posts?author_age__gte=30&order_by[]=-views
+```
+
 ## Complete Example
 
 ```python
