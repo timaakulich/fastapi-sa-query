@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/fastapi-sa-query.svg)](https://badge.fury.io/py/fastapi-sa-query)
 [![Python](https://img.shields.io/pypi/pyversions/fastapi-sa-query.svg)](https://pypi.org/project/fastapi-sa-query/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://github.com/yourusername/fastapi-sa-query/workflows/Tests/badge.svg)](https://github.com/yourusername/fastapi-sa-query/actions)
+[![Tests](https://github.com/yourusername/fastapi-sa-query/workflows/Tests/badge.svg)](https://github.com/timaakulich/fastapi-sa-query/actions)
 
 Dynamic query filters and ordering for **FastAPI** + **SQLAlchemy 2.0**.
 
