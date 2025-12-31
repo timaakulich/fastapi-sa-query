@@ -1,16 +1,23 @@
+from collections.abc import Generator
 from datetime import datetime
 from decimal import Decimal
-from typing import Generator, List
 
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, String, Integer, DateTime, ForeignKey, Numeric
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session, sessionmaker, relationship
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, create_engine
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    Session,
+    mapped_column,
+    relationship,
+    sessionmaker,
+)
 from sqlalchemy.pool import StaticPool
 
 from fastapi_sa_query import filter_, filter_by_fields, order_by_fields
-from fastapi_sa_query.func import gte, lte, eq, like, ilike, in_, gt, lt, is_null
+from fastapi_sa_query.func import eq, gt, gte, ilike, in_, is_null, like, lt, lte
 
 
 class Base(DeclarativeBase):
@@ -27,7 +34,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime)
     score: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    posts: Mapped[List["Post"]] = relationship("Post", back_populates="author")
+    posts: Mapped[list["Post"]] = relationship("Post", back_populates="author")
 
 
 class Post(Base):
@@ -66,7 +73,7 @@ def create_app() -> FastAPI:
     @app.get("/users")
     def get_users(
         db: Session = Depends(get_db),
-        filters=Depends(filter_by_fields({
+        filter_by=Depends(filter_by_fields({
             "name": filter_(User.name, (eq, like, ilike)),
             "email": filter_(User.email, (eq, like, ilike)),
             "age": filter_(User.age, (eq, gte, lte, gt, lt, in_)),
@@ -79,8 +86,8 @@ def create_app() -> FastAPI:
             "age": User.age,
             "created_at": User.created_at,
         }, default=User.id)),
-    ) -> List[dict]:
-        query = db.query(User).filter(*filters).order_by(*order_by)
+    ) -> list[dict]:
+        query = db.query(User).filter(*filter_by).order_by(*order_by)
         return [
             {
                 "id": u.id,
@@ -96,7 +103,7 @@ def create_app() -> FastAPI:
     @app.get("/posts")
     def get_posts(
         db: Session = Depends(get_db),
-        filters=Depends(filter_by_fields({
+        filter_by=Depends(filter_by_fields({
             "title": filter_(Post.title, (eq, like, ilike)),
             "views": filter_(Post.views, (eq, gte, lte, gt, lt)),
             "rating": filter_(Post.rating, (eq, gte, lte, is_null), query_param_type=float),
@@ -114,8 +121,8 @@ def create_app() -> FastAPI:
             "author_name": User.name,
             "author_age": User.age,
         }, default=Post.id)),
-    ) -> List[dict]:
-        query = db.query(Post).join(User).filter(*filters).order_by(*order_by)
+    ) -> list[dict]:
+        query = db.query(Post).join(User).filter(*filter_by).order_by(*order_by)
         return [
             {
                 "id": p.id,

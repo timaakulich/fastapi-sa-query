@@ -1,11 +1,26 @@
 # fastapi-sa-query
 
-Dynamic query filters and ordering for FastAPI + SQLAlchemy.
+[![PyPI version](https://badge.fury.io/py/fastapi-sa-query.svg)](https://badge.fury.io/py/fastapi-sa-query)
+[![Python](https://img.shields.io/pypi/pyversions/fastapi-sa-query.svg)](https://pypi.org/project/fastapi-sa-query/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://github.com/yourusername/fastapi-sa-query/workflows/Tests/badge.svg)](https://github.com/yourusername/fastapi-sa-query/actions)
+
+Dynamic query filters and ordering for **FastAPI** + **SQLAlchemy 2.0**.
+
+Build powerful, type-safe REST APIs with declarative filtering and sorting — no boilerplate required.
+
+## Features
+
+- 🎯 **Declarative filters** — define once, use everywhere
+- 🔗 **Join support** — filter and sort by related table columns
+- 📝 **Type-safe** — full type hints with `py.typed` marker
+- 🚀 **Zero boilerplate** — works seamlessly with FastAPI's dependency injection
+- 📖 **Auto-documented** — filters appear in OpenAPI/Swagger UI
 
 ## Installation
 
 ```bash
-pip install fastapi sqlalchemy
+pip install fastapi-sa-query
 ```
 
 ## Quick Start
@@ -23,7 +38,7 @@ app = FastAPI()
 @app.get("/users")
 def get_users(
     db: Session = Depends(get_db),
-    filters=Depends(filter_by_fields({
+    filter_by=Depends(filter_by_fields({
         "name": filter_(User.name, (eq, like, ilike)),
         "age": filter_(User.age, (eq, gte, lte, in_)),
         "score": filter_(User.score, (eq, gte, lte, is_null)),
@@ -34,39 +49,48 @@ def get_users(
         "age": User.age,
     }, default=User.id)),
 ):
-    query = db.query(User).filter(*filters).order_by(*order_by)
+    query = db.query(User).filter(*filter_by).order_by(*order_by)
     return query.all()
 ```
 
-## API Usage
+That's it! Your API now supports:
+
+```
+GET /users?name__like=john&age__gte=25&order_by[]=-age
+```
+
+## Usage
 
 ### Filtering
 
-Filters are passed as query parameters with the format `field__operator`:
+Filters use the format `field__operator`:
 
-```
-GET /users?name__eq=Alice
-GET /users?age__gte=25
-GET /users?age__lte=30
-GET /users?name__like=ali
-GET /users?name__ilike=ALICE
-GET /users?score__is_null=true
-```
-
-List operators use `[]` suffix:
-
-```
-GET /users?age__in[]=25&age__in[]=30
-```
+| Request | Description |
+|---------|-------------|
+| `?name__eq=Alice` | Exact match |
+| `?age__gte=25` | Greater than or equal |
+| `?age__lte=30` | Less than or equal |
+| `?name__like=ali` | Contains (case-sensitive) |
+| `?name__ilike=ALI` | Contains (case-insensitive) |
+| `?score__is_null=true` | NULL check |
+| `?age__in[]=25&age__in[]=30` | Value in list |
 
 ### Ordering
 
 Use `order_by[]` parameter. Prefix with `-` for descending:
 
 ```
-GET /users?order_by[]=name
-GET /users?order_by[]=-age
-GET /users?order_by[]=age&order_by[]=-name
+GET /users?order_by[]=name          # ascending
+GET /users?order_by[]=-age          # descending
+GET /users?order_by[]=age&order_by[]=-name  # multiple
+```
+
+### Combining Filters
+
+Multiple filters are combined with AND:
+
+```
+GET /users?age__gte=25&age__lte=35&name__ilike=a
 ```
 
 ## Available Operators
@@ -83,56 +107,21 @@ GET /users?order_by[]=age&order_by[]=-name
 | `in_` | Value in list | `?age__in[]=25&age__in[]=30` |
 | `is_null` | Is NULL check | `?score__is_null=true` |
 | `contains` | Array contains (PostgreSQL) | `?tags__contains[]=python` |
-| `contained_by` | Array contained by (PostgreSQL) | `?tags__contained_by[]=a&tags__contained_by[]=b` |
+| `contained_by` | Array contained by (PostgreSQL) | `?tags__contained_by[]=a` |
 
 ## Advanced Usage
 
-### Custom Type Casting
+### Filtering on Joined Tables
 
-```python
-from uuid import UUID
-
-filters = {
-    "user_id": filter_(
-        Order.user_id,
-        (eq,),
-        cast_type=UUID,  # Convert string to UUID
-    ),
-}
-```
-
-### Custom Query Parameter Type
-
-```python
-filters = {
-    "status": filter_(
-        Order.status,
-        (eq, in_),
-        query_param_type=str,  # Override detected type
-    ),
-}
-```
-
-### Combining Filters
-
-Multiple filters are combined with AND:
-
-```
-GET /users?age__gte=25&age__lte=35&name__ilike=a
-```
-
-### Filtering and Ordering on Joined Tables
-
-You can filter and order by columns from related tables. Just add the join in your query and reference the related model's columns:
+Filter and order by columns from related tables:
 
 ```python
 class Post(Base):
     __tablename__ = "posts"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    views: Mapped[int] = mapped_column(Integer)
 
     author: Mapped["User"] = relationship("User")
 
@@ -140,134 +129,103 @@ class Post(Base):
 @app.get("/posts")
 def get_posts(
     db: Session = Depends(get_db),
-    filters=Depends(filter_by_fields({
+    filter_by=Depends(filter_by_fields({
         # Post filters
         "title": filter_(Post.title, (eq, like, ilike)),
         "views": filter_(Post.views, (eq, gte, lte)),
         # Joined User filters
         "author_name": filter_(User.name, (eq, like, ilike)),
         "author_age": filter_(User.age, (eq, gte, lte)),
-        "author_email": filter_(User.email, (like, ilike)),
     })),
     order_by=Depends(order_by_fields({
         "id": Post.id,
         "title": Post.title,
-        "views": Post.views,
         # Joined User ordering
         "author_name": User.name,
-        "author_age": User.age,
     })),
 ):
-    # Add .join(User) for joined filters/ordering
-    query = db.query(Post).join(User).filter(*filters).order_by(*order_by)
+    query = db.query(Post).join(User).filter(*filter_by).order_by(*order_by)
     return query.all()
 ```
 
-API usage:
+Usage:
 
 ```
-# Filter posts by author's name
 GET /posts?author_name__eq=Alice
-
-# Filter by author age range
-GET /posts?author_age__gte=25&author_age__lte=35
-
-# Combine post and author filters
+GET /posts?author_age__gte=30&order_by[]=-author_name
 GET /posts?views__gte=100&author_name__like=ali
-
-# Order by author's name
-GET /posts?order_by[]=author_name
-
-# Order by author age descending
-GET /posts?order_by[]=-author_age
-
-# Filter and order together
-GET /posts?author_age__gte=30&order_by[]=-views
 ```
 
-## Complete Example
+### Custom Type Casting
 
 ```python
-from datetime import datetime
-from typing import List
+from uuid import UUID
 
-from fastapi import Depends, FastAPI
-from sqlalchemy import create_engine, String, Integer, DateTime
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session, sessionmaker
-
-from fastapi_sa_query import filter_, filter_by_fields, order_by_fields
-from fastapi_sa_query.func import eq, gte, lte, gt, lt, like, ilike, in_, is_null
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(100))
-    email: Mapped[str] = mapped_column(String(255))
-    age: Mapped[int] = mapped_column(Integer)
-    created_at: Mapped[datetime] = mapped_column(DateTime)
-    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-
-engine = create_engine("sqlite:///./app.db")
-SessionLocal = sessionmaker(bind=engine)
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-app = FastAPI()
-
-
-@app.get("/users")
-def get_users(
-    db: Session = Depends(get_db),
-    filters=Depends(filter_by_fields({
-        "name": filter_(User.name, (eq, like, ilike)),
-        "email": filter_(User.email, (eq, like, ilike)),
-        "age": filter_(User.age, (eq, gte, lte, gt, lt, in_)),
-        "created_at": filter_(User.created_at, (eq, gte, lte)),
-        "score": filter_(User.score, (eq, gte, lte, is_null)),
-    })),
-    order_by=Depends(order_by_fields({
-        "id": User.id,
-        "name": User.name,
-        "age": User.age,
-        "created_at": User.created_at,
-    }, default=User.id)),
-) -> List[dict]:
-    query = db.query(User).filter(*filters).order_by(*order_by)
-    return [
-        {
-            "id": u.id,
-            "name": u.name,
-            "email": u.email,
-            "age": u.age,
-            "created_at": u.created_at.isoformat(),
-            "score": u.score,
-        }
-        for u in query.all()
-    ]
+filter_by=Depends(filter_by_fields({
+    "user_id": filter_(
+        Order.user_id,
+        (eq,),
+        cast_type=UUID,  # Convert string to UUID
+    ),
+}))
 ```
 
-## Running Tests
+### Custom Query Parameter Type
+
+```python
+filter_by=Depends(filter_by_fields({
+    "rating": filter_(
+        Post.rating,
+        (eq, gte, lte),
+        query_param_type=float,  # Override detected type
+    ),
+}))
+```
+
+## Example Application
+
+Run the included example:
 
 ```bash
-pip install pytest httpx
-pytest tests/ -v
+# Install dependencies
+pip install fastapi-sa-query[dev]
+
+# Run the example app
+uvicorn example_app:app --reload
 ```
+
+Open http://127.0.0.1:8000/docs to explore the API.
+
+## Development
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/fastapi-sa-query.git
+cd fastapi-sa-query
+
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Run linter
+ruff check .
+
+# Run type checker
+mypy fastapi_sa_query
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-MIT
-
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.

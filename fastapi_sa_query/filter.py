@@ -1,8 +1,16 @@
+"""
+Filter dependency generator for FastAPI endpoints.
+
+This module provides the filter_by_fields function that creates
+a FastAPI dependency for handling query parameter filters.
+"""
+
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import make_dataclass
 from datetime import datetime
-from typing import Dict, List, Type, Any, Union, TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Any, Union
 
 from fastapi import Query
 from sqlalchemy.orm import InstrumentedAttribute
@@ -18,21 +26,46 @@ ColumnType = Union[ColumnElement[Any], InstrumentedAttribute[Any]]
 
 class FilterError(Exception):
     """Base exception for filter-related errors."""
+
     pass
 
 
 class InvalidFieldError(FilterError):
     """Raised when an invalid field name is used."""
+
     pass
 
 
 class InvalidOperatorError(FilterError):
     """Raised when an invalid operator is used for a field."""
+
     pass
 
 
-def filter_by_fields(available_fields: Dict[str, FilterType]) -> Type:
-    field_definitions = []
+def filter_by_fields(available_fields: dict[str, FilterType]) -> type[Any]:
+    """
+    Create a FastAPI dependency class for filtering.
+
+    This function generates a dataclass with query parameters for each
+    field/operator combination defined in available_fields.
+
+    Args:
+        available_fields: Dictionary mapping field names to FilterType configs.
+
+    Returns:
+        A dataclass type that can be used as a FastAPI dependency.
+
+    Example:
+        @app.get("/users")
+        def get_users(
+            filter_by=Depends(filter_by_fields({
+                "name": filter_(User.name, (eq, like)),
+                "age": filter_(User.age, (gte, lte)),
+            }))
+        ):
+            return db.query(User).filter(*filter_by).all()
+    """
+    field_definitions: list[tuple[str, type, Any]] = []
 
     for field_name, field_filter in available_fields.items():
         for operator_name, operator_func in field_filter.operators.items():
@@ -46,20 +79,20 @@ def filter_by_fields(available_fields: Dict[str, FilterType]) -> Type:
             field_definitions.append(
                 (
                     name,
-                    List[field_type] if is_list else field_type,
-                    Query(None, alias=f"{name}{'[]' if is_list else ''}")
+                    list[field_type] if is_list else field_type,  # type: ignore[valid-type]
+                    Query(None, alias=f"{name}{'[]' if is_list else ''}"),
                 )
             )
 
-    def __iter__(self) -> Iterator[ColumnElement[Any]]:
-        _filter_query = []
+    def __iter__(self: Any) -> Iterator[ColumnElement[Any]]:
+        _filter_query: list[ColumnElement[Any]] = []
         for _field in self.__dataclass_fields__:
             if (value := getattr(self, _field, None)) is None:
                 continue
             if isinstance(value, datetime):
                 value = value.replace(tzinfo=None)
 
-            _field_name, operator = _field.rsplit('__', 1)
+            _field_name, operator = _field.rsplit("__", 1)
 
             if _field_name not in available_fields:
                 raise InvalidFieldError(
@@ -78,8 +111,7 @@ def filter_by_fields(available_fields: Dict[str, FilterType]) -> Type:
             cast_type = field_config.cast_type
             _filter_query.append(
                 field_config.operators[operator](
-                    field_config.field,
-                    cast_type(value)
+                    field_config.field, cast_type(value)  # type: ignore[misc]
                 )
             )
         return iter(_filter_query)
@@ -87,7 +119,7 @@ def filter_by_fields(available_fields: Dict[str, FilterType]) -> Type:
     result = make_dataclass(
         "FilterQueryParams",
         field_definitions,
-        namespace={"__iter__": __iter__}
+        namespace={"__iter__": __iter__},
     )
 
     return result
